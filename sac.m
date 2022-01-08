@@ -315,15 +315,13 @@ UnemployedWealth[state_] := WealthHoldings[Unemployed[state]]
 (* Returns list of firm sizes *)
 FirmSizes[state_] := Length /@ GetEmployees/@ Values[Employers[state]]
 
-(* TODO: this is inefficient *)
 (* Returns a list of firm histories, where a firm history is a time-ordered list of states of the agent when they were an employer *)
 (* N.B. if p!=1 then multiple firm lifetimes can be collapsed to 1 firm lifetime. In which case, Books may be reset during apparent lifetime of the firm. *)
 FirmHistories[history_List] := Module[{firmHistories},
-   (* Create an association that maps agent ids to a list of their history, where an element {} in the list indicates the agent was not an employer, otherwise the element is simply the agent's state at that time *)
    PrintTemporary["Construct histories"];
-   firmHistories = Flatten[ResourceFunction["DynamicMap"][Map[If[IsEmployer[#], #, {}] &, #["agents"]] &, history]];
+   (* Construct a list of associations of firms in each simulation step *)
+   firmHistories = Flatten[ResourceFunction["DynamicMap"][DeleteCases[Map[If[IsEmployer[#], #, {}] &, #["agents"]], {}] &, history]];
    PrintTemporary["Merge histories"];
-   (* TODO: this is the inefficient step *)
    firmHistories = Merge[firmHistories, Join];
    (* Split history lists into sequences when the agent was an employer and when it was not *)
    PrintTemporary["Split histories"];
@@ -331,8 +329,6 @@ FirmHistories[history_List] := Module[{firmHistories},
    PrintTemporary["Remove non-firm data"];
    (* Delete sequences when the agent was not an employer, leaving a sequence of firm lifetimes (consisting of a sequence of agent states) for each agent *)
    firmHistories = ResourceFunction["DynamicMap"][Map[If[Length[DeleteCases[#, {}]] == 0, Nothing, #] &, #]&, firmHistories];
-   (* Delete any agents that were never firms *)
-   firmHistories = DeleteCases[firmHistories, {}];
    Flatten[Values[firmHistories], 1]
 ]
 
