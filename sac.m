@@ -124,7 +124,8 @@ Spend[state_, agentId_] := Block[{newState = state, spendingAgent, m, s, td},
   spendingAgent = GetAgent[newState, agentId];
   m = GetMoney[spendingAgent];
   (* Higher probability of spending a small amount of money *)
-  s = RandomExponentialReal[m];
+  (* s = RandomExponentialReal[m]; *)
+  s = RandomReal[m];
   newState["demand"] = newState["demand"] + s;
   newState["agents"][agentId] = SetMoney[spendingAgent, m - s];
   newState
@@ -137,7 +138,8 @@ Invest[state_, agentId_] := Block[{newState = state, investingAgent, m, s},
   If[IsEmployer[investingAgent],
     m = GetMoney[investingAgent];
     (* Higher probability of investing a small amount of money *)
-    s = RandomExponentialReal[m];
+    (* s = RandomExponentialReal[m]; *)
+    s = RandomReal[m];
     investingAgent = SetFixedCapital[investingAgent, GetFixedCapital[investingAgent] + s];
     investingAgent = SetMoney[investingAgent, m - s];
     newState["agents"][agentId] = investingAgent;
@@ -184,7 +186,7 @@ Hire[agents_] := Block[{hiringAgentId, hireeAgentId},
 	]
 ]
 
-FixedCapitalTransfer[agents_, workingAgentId_] := Block[{newAgents = agents, employerId, fixedCapitalTransfer = 0.0, numFirmEmployees, depreciationRate = 0.01},
+FixedCapitalTransfer[agents_, workingAgentId_] := Block[{newAgents = agents, employerId, fixedCapitalTransfer = 0.0, numFirmEmployees, depreciationRate = 0.02},
 	If[IsEmployee[agents[workingAgentId]],
 		employerId = GetEmployer[agents[workingAgentId]];
 		(* Each employee transfers a proportion of the firm's fixed capital *)
@@ -198,12 +200,8 @@ Work[state_, agentId_] := Block[{newState, workingAgentId, valueAdded, employerA
   If[!IsUnemployed[GetAgent[state, agentId]],
     newState = state;
     {newState["agents"], fixedCapitalTransfer} = FixedCapitalTransfer[newState["agents"], agentId];
-    (* Grab some value-add *)
-    (* Constant capital value-add is guaranteed *)
-    (*valueAdded=Min[newState["demand"],fixedCapitalTransfer+RandomReal[newState["demand"]]];*)
-    valueAdded = Min[newState["demand"], fixedCapitalTransfer + RandomReal[1.0]];(* i.e. x2 value-add of workers *)
-    (* Constant capital value-add is not guaranteed *)
-    (*valueAdded=Min[newState["demand"],RandomReal[2.0(1.0+fixedCapitalTransfer)]];*)
+    (* Transfer value of fixed capital and sample some value-add from effective demand *)
+    valueAdded = Min[newState["demand"], fixedCapitalTransfer + RandomReal[newState["demand"]]];
     newState["demand"] = newState["demand"] - valueAdded;
     (* Transfer to employer *)
     With[{workingAgent = GetAgent[state, agentId]},
@@ -229,15 +227,8 @@ Pay[agents_, employeeId_] := Block[{newAgents = agents, employerIds, employerId,
   If[IsEmployee[newAgents[employeeId]],
     employerId = GetEmployer[newAgents[employeeId]];
     If[employerId != employeeId,
-      (*wage=Min[0.0001,RandomReal[GetMoney[newAgents[employerId]]]]; *)
-      (*wage=RandomReal[GetMoney[newAgents[employerId]]]/Length[GetEmployees[newAgents[employerId]]];*)
-      (*wage=RandomReal[GetMoney[newAgents[employerId]]/Length[GetEmployees[newAgents[employerId]]]];*)
-      (* This controls the unemployment level *)
-      (*wage=RandomReal[{0.3,0.5}];*)
-      (* Best unemployment rate *)
-      (*wage=0.5;*)
-      (* This parameter is crucial for Zipf firm size *)
-      wage = RandomReal[0.5];
+      (* Wage is crucial parameter. Too low and 1 firm dominates. Too high and no large firms form. Also controls unemployment rate *)
+      wage = RandomReal[1.0];
       If[GetMoney[newAgents[employerId]] >= wage,
         newAgents[employerId] = SetMoney[newAgents[employerId], GetMoney[newAgents[employerId]] - wage];
         newAgents[employeeId] = SetMoney[newAgents[employeeId], GetMoney[newAgents[employeeId]] + wage];
