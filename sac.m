@@ -350,7 +350,7 @@ EmployersWealth[state_] := WealthHoldings[Employers[state]]
 UnemployedWealth[state_] := WealthHoldings[Unemployed[state]]
 
 (* Returns list of firm sizes *)
-FirmSizes[state_] := Length /@ #[GetEmployees]& /@ Values[Employers[state]]
+FirmSizes[state_] := Length /@ (#[GetEmployees]& /@ Values[Employers[state]])
 
 (* Returns a list of firm histories, where a firm history is a time-ordered list of states of the agent when they were an employer *)
 (* N.B. if p!=1 then multiple firm lifetimes can be collapsed to 1 firm lifetime. In which case, Books may be reset during apparent lifetime of the firm. *)
