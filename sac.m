@@ -73,9 +73,7 @@ FirmWageBill::usage = "";
 FirmProfit::usage = "";
 FirmProfitRates::usage = "";
 ExtendAgent::usage = "";
-IntendAgent::usage = "";
 ExtendState::usage = "";
-IntendState::usage = "";
 BooksName::usage = "";
 ExtendBooks::usage = "";
 
@@ -91,18 +89,12 @@ Books[name_] := Module[{wages = 0.0, depreciation = 0.0, revenue = 0.0},
    name
 ]
 
-BooksName[name_] := Books[name] = Symbol["books" <> ToString[name]]
-
 ExtendBooks[name_] := {name[GetWages], name[GetDepreciation], name[GetRevenue]}
+GetWages[books_List] := books[[1]]
+GetDepreciation[books_List] := books[[2]]
+GetRevenue[books_List] := books[[3]]
 
-IntendBooks[name_, object_] := Block[{},
-   (*If[!NameQ[name, ResolveContextAliases \[Rule] True], Books[name]];*)
-   Books[name];
-   name[SetWages[object[[1]]]];
-   name[SetDepreciation[object[[2]]]];
-   name[SetRevenue[object[[3]]]];
-   name
-]
+BooksName[name_] := Books[name] = Symbol["books" <> ToString[name]]
 
 RecordWagePayment[books_, payment_] := (books[SetWages[books[GetWages] + payment]]; books)
 RecordDepreciation[books_, depreciation_] := (books[SetDepreciation[books[GetDepreciation] + depreciation]]; books)
@@ -123,24 +115,22 @@ Agent[name_] := Module[{money = 0.0, employer = None, employees = {}, fixedCapit
    name
 ]
 
+ExtendAgent[name_] := {name[GetMoney], name[GetEmployer], name[GetEmployees], name[GetFixedCapital], ExtendBooks[name[GetBooks]]}
+GetMoney[agent_List] := agent[[1]]
+GetEmployer[agent_List] := agent[[2]]
+GetEmployees[agent_List] := agent[[3]]
+GetFixedCapital[agent_List] := agent[[4]]
+GetBooks[agent_List] := agent[[5]]
+GetWealth[agent_List] := GetMoney[agent] + GetFixedCapital[agent]
+
 AgentName[id_] := AgentName[id] = Symbol["agent" <> ToString[id]]
 
-ExtendAgent[name_] := {name[GetMoney], name[GetEmployer], name[GetEmployees], name[GetFixedCapital], ExtendBooks[name[GetBooks]]}
-
-IntendAgent[name_, object_] := Block[{},
-   (* If[!NameQ[name, ResolveContextAliases \[Rule] True], Agent[name]]; *)
-   Agent[name];
-   name[SetMoney[object[[1]]]];
-   name[SetEmployer[object[[2]]]];
-   name[SetEmployees[object[[3]]]];
-   name[SetFixedCapital[object[[4]]]];
-   name[SetBooks[IntendBooks[BooksName[name], object[[5]]]]];
-   name
-]
-IntendAgent[object_] := IntendAgent[agent0, object]
-
 IsEmployee[agent_] := NumberQ[agent[GetEmployer]]
+IsEmployee[agent_List] := NumberQ[GetEmployer[agent]]
+
 IsEmployer[agent_] := Length[agent[GetEmployees]] > 0
+IsEmployer[agent_List] := Length[GetEmployees[agent]] > 0
+
 IsUnemployed[agent_] := !(IsEmployee[agent] || IsEmployer[agent])
 
 InitState[numAgents_, moneyPerAgent_] := Association[{
@@ -258,10 +248,8 @@ Work[state_, agentId_] := Block[{newState, workingAgentId, valueAdded, employerA
     employerAgent[SetMoney[employerAgent[GetMoney] + valueAdded]];
     (* Record the depreciation *)
     RecordDepreciation[BooksName[employerAgent], fixedCapitalTransfer];
-    (* employerAgent[SetBooks[RecordDepreciation[employerAgent[GetBooks], fixedCapitalTransfer]]]; *)
     (* Record the revenue *)
     RecordRevenue[BooksName[employerAgent], valueAdded];
-    (*employerAgent[SetBooks[RecordRevenue[employerAgent[GetBooks], valueAdded]]];*)
     newState,
     (* else no work done *)
     state
@@ -281,14 +269,12 @@ Pay[agents_, employeeId_] := Block[{employerIds, employerId, employeeIds, wage},
         agents[employeeId][SetMoney[agents[employeeId][GetMoney] + wage]];
         (* Update books *)
         RecordWagePayment[agents[employerId][GetBooks], wage];
-        (* agents[employerId][SetBooks[RecordWagePayment[agents[employerId][GetBooks], wage]]]; *)
         (* else fire employee if run out of money (and don't pay them) *)
         Resign[agents, employeeId];
         (* If this is last employee, and firm dissolves, then close the books *)
         (* TODO: may want to scrap fixed-capital too at this point *)
         If[!IsEmployer[agents[employerId]],
            Books[agents[employerId][GetBooks]];
-           (*agents[employerId][SetBooks[Books[]]];*)
         ];
       ];
     ];
@@ -299,7 +285,6 @@ Pay[agents_, employeeId_] := Block[{employerIds, employerId, employeeIds, wage},
 Pay[agents_] := Pay[agents, ChooseAgent[agents]]
 
 ExtendState[intendedState_] := MapAt[Map[ExtendAgent[#] &, #] &, intendedState, Key["agents"]]
-IntendState[extendedState_] := MapAt[Association[KeyValueMap[With[{key = #1, value = #2}, key -> IntendAgent[AgentName[key], value]] &, #]] &, extendedState, Key["agents"]]
 
 Simulate[numAgents_, numIterations_, p_] := Module[{state = InitState[numAgents, 1], i = numIterations, rules},
   rules = {
@@ -319,6 +304,8 @@ Simulate[numAgents_, numIterations_, p_] := Module[{state = InitState[numAgents,
   ]]]
 ]
 
+(* Data analysis *)
+
 (* Returns association of employees *)
 Employees[state_] := Select[state["agents"], IsEmployee]
 
@@ -329,13 +316,13 @@ Employers[state_] := Select[state["agents"], IsEmployer]
 Unemployed[state_] := Select[state["agents"], IsUnemployed]
 
 (* Returns money holdings for every agent *)
-MoneyHoldings[agents_] := Map[#[GetMoney]&, Values[agents]]
+MoneyHoldings[agents_] := GetMoney /@ Values[agents]
 
 (* Returns wealth holdings for every agent *)
-WealthHoldings[agents_] := Map[#[GetWealth]&, Values[agents]]
+WealthHoldings[agents_] := GetWealth /@ Values[agents]
 
 (* Returns fixed capital held by every agent *)
-FixedCapital[agents_] := Map[#[GetFixedCapital]&, Values[agents]]
+FixedCapital[agents_] := GetFixedCapital /@ Values[agents]
 
 (* Returns money holdings for every employee *)
 EmployeesMoney[state_] := MoneyHoldings[Employees[state]]
@@ -356,7 +343,7 @@ EmployersWealth[state_] := WealthHoldings[Employers[state]]
 UnemployedWealth[state_] := WealthHoldings[Unemployed[state]]
 
 (* Returns list of firm sizes *)
-FirmSizes[state_] := Length /@ (#[GetEmployees]& /@ Values[Employers[state]])
+FirmSizes[state_] := Length /@ GetEmployees /@ Values[Employers[state]]
 
 (* Returns a list of firm histories, where a firm history is a time-ordered list of states of the agent when they were an employer *)
 (* N.B. if p!=1 then multiple firm lifetimes can be collapsed to 1 firm lifetime. In which case, Books may be reset during apparent lifetime of the firm. *)
@@ -376,34 +363,34 @@ FirmHistories[history_List] := Module[{firmHistories},
 ]
 
 (* Returns a list of the wealth of all employers at all times *)
-EmployersWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployersWealth[IntendState[#]]&, history]]
+EmployersWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployersWealth[#]&, history]]
 
 (* Returns a list of the wealth of all employees at all times *)
-EmployeesWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployeesWealth[IntendState[#]]&, history]]
+EmployeesWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployeesWealth[#]&, history]]
 
 (* Returns a list of the wealth of all unemployed at all times *)
-UnemployedWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][UnemployedWealth[IntendState[#]]&, history]]
+UnemployedWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][UnemployedWealth[#]&, history]]
 
 (* Returns a list of the money holdings of all employees at all times *)
-EmployeesMoney[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployeesMoney[IntendState[#]]&, history]]
+EmployeesMoney[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployeesMoney[#]&, history]]
 
 (* Returns a list of the firm sizes of all firms at all times *)
-FirmSizes[history_List] := Flatten[ResourceFunction["DynamicMap"][FirmSizes[IntendState[#]]&, history]]
+FirmSizes[history_List] := Flatten[ResourceFunction["DynamicMap"][FirmSizes[#]&, history]]
 
 (* Returns a list of number of unemployed at all times *)
-Unemployed[history_List] := Length /@ Flatten[ResourceFunction["DynamicMap"][Unemployed[IntendState[#]]&, history]]
+Unemployed[history_List] := Flatten[ResourceFunction["DynamicMap"][Length[Unemployed[#]]&, history]]
 
 (* Returns a list of the total aggregate money held by agents at all times *)
-TotalMoneyHoldings[history_List] := Total /@ ResourceFunction["DynamicMap"][MoneyHoldings[IntendState[#]["agents"]]&, history]
+TotalMoneyHoldings[history_List] := ResourceFunction["DynamicMap"][Total[MoneyHoldings[#["agents"]]]&, history]
 
 (* Returns list of total lifetime revenue of all firms that existed *)
-FirmRevenue[firmHistory_List] := IntendAgent[#][GetBooks][GetRevenue] & /@ Last /@ firmHistory
+FirmRevenue[firmHistory_List] := GetRevenue[GetBooks[#]] & /@ Last /@ firmHistory
 
 (* Returns list of total lifetime depreciation of all firms that existed *)
-FirmDepreciation[firmHistory_List] := IntendAgent[#][GetBooks][GetDepreciation] & /@ Last /@ firmHistory
+FirmDepreciation[firmHistory_List] := GetDepreciation[GetBooks[#]] & /@ Last /@ firmHistory
 
 (* Returns list of total lifetime wage bill of all firms that existed *)
-FirmWageBill[firmHistory_List] := IntendAgent[#][GetBooks][GetWages] & /@ Last /@ firmHistory
+FirmWageBill[firmHistory_List] := GetWages[GetBooks[#]] & /@ Last /@ firmHistory
 
 FirmProfit[firmHistory_List] := Module[
    {
