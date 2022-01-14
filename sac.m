@@ -76,39 +76,39 @@ ExtendAgent::usage = "";
 IntendAgent::usage = "";
 ExtendState::usage = "";
 IntendState::usage = "";
+BooksName::usage = "";
+ExtendBooks::usage = "";
 
 Begin["`Private`"]
 
-(*
-
-https://community.wolfram.com/groups/-/m/t/1796848
-
 Books[name_] := Module[{wages = 0.0, depreciation = 0.0, revenue = 0.0},
-   name[getWages] := wages;
-   name[setWages[x_]] := wages = x;
-   name[getDepreciation] := depreciation;
-   name[setDepreciation[x_]] := depreciation = x;
-   name[getRevenue] := revenue;
-   name[setRevenue[x_]] := revenue = x;
+   name[GetWages] := wages;
+   name[SetWages[x_]] := wages = x;
+   name[GetDepreciation] := depreciation;
+   name[SetDepreciation[x_]] := depreciation = x;
+   name[GetRevenue] := revenue;
+   name[SetRevenue[x_]] := revenue = x;
+   name
 ]
 
-books1[setWages[10]];
-books1[setDepreciation[2]];
-books1[setRevenue[0.1]];
+BooksName[name_] := Books[name] = Symbol["books" <> ToString[name]]
 
-{books1[getWages],books1[getDepreciation],books1[getRevenue]}
-*)
+ExtendBooks[name_] := {name[GetWages], name[GetDepreciation], name[GetRevenue]}
 
-Books[] := {0.0, 0.0, 0.0}
-Books[wages_, depreciation_, revenue_] := {wages, depreciation, revenue}
-GetWages[books_] := books[[1]]
-GetDepreciation[books_] := books[[2]]
-GetRevenue[books_] := books[[3]]
-RecordWagePayment[books_, payment_] := {GetWages[books] + payment, GetDepreciation[books], GetRevenue[books]}
-RecordDepreciation[books_, depreciation_] := {GetWages[books], GetDepreciation[books] + depreciation, GetRevenue[books]}
-RecordRevenue[books_, revenue_] := {GetWages[books], GetDepreciation[books], GetRevenue[books] + revenue}
+IntendBooks[name_, object_] := Block[{},
+   (*If[!NameQ[name, ResolveContextAliases \[Rule] True], Books[name]];*)
+   Books[name];
+   name[SetWages[object[[1]]]];
+   name[SetDepreciation[object[[2]]]];
+   name[SetRevenue[object[[3]]]];
+   name
+]
 
-Agent[name_] := Module[{money = 0.0, employer = None, employees = {}, fixedCapital = 0.0, books = Books[]},
+RecordWagePayment[books_, payment_] := (books[SetWages[books[GetWages] + payment]]; books)
+RecordDepreciation[books_, depreciation_] := (books[SetDepreciation[books[GetDepreciation] + depreciation]]; books)
+RecordRevenue[books_, revenue_] := (books[SetRevenue[books[GetRevenue] + revenue]]; books)
+
+Agent[name_] := Module[{money = 0.0, employer = None, employees = {}, fixedCapital = 0.0, books = Books[BooksName[name]]},
    name[GetMoney] := money;
    name[SetMoney[x_]] := money = x;
    name[GetEmployer] := employer;
@@ -120,19 +120,21 @@ Agent[name_] := Module[{money = 0.0, employer = None, employees = {}, fixedCapit
    name[GetBooks] := books;
    name[SetBooks[x_]] := books = x;
    name[GetWealth] := money + fixedCapital;
+   name
 ]
 
-Agent[agent0];
+AgentName[id_] := AgentName[id] = Symbol["agent" <> ToString[id]]
 
-AgentName[id_] := Symbol["agent" <> ToString[id]]
+ExtendAgent[name_] := {name[GetMoney], name[GetEmployer], name[GetEmployees], name[GetFixedCapital], ExtendBooks[name[GetBooks]]}
 
-ExtendAgent[name_] := {name[GetMoney], name[GetEmployer], name[GetEmployees], name[GetFixedCapital], name[GetBooks]}
 IntendAgent[name_, object_] := Block[{},
+   (* If[!NameQ[name, ResolveContextAliases \[Rule] True], Agent[name]]; *)
+   Agent[name];
    name[SetMoney[object[[1]]]];
    name[SetEmployer[object[[2]]]];
    name[SetEmployees[object[[3]]]];
    name[SetFixedCapital[object[[4]]]];
-   name[SetBooks[object[[5]]]];
+   name[SetBooks[IntendBooks[BooksName[name], object[[5]]]]];
    name
 ]
 IntendAgent[object_] := IntendAgent[agent0, object]
@@ -255,9 +257,11 @@ Work[state_, agentId_] := Block[{newState, workingAgentId, valueAdded, employerA
     employerAgent = newState["agents"][employerAgentId];
     employerAgent[SetMoney[employerAgent[GetMoney] + valueAdded]];
     (* Record the depreciation *)
-    employerAgent[SetBooks[RecordDepreciation[employerAgent[GetBooks], fixedCapitalTransfer]]];
+    RecordDepreciation[BooksName[employerAgent], fixedCapitalTransfer];
+    (* employerAgent[SetBooks[RecordDepreciation[employerAgent[GetBooks], fixedCapitalTransfer]]]; *)
     (* Record the revenue *)
-    employerAgent[SetBooks[RecordRevenue[employerAgent[GetBooks], valueAdded]]];
+    RecordRevenue[BooksName[employerAgent], valueAdded];
+    (*employerAgent[SetBooks[RecordRevenue[employerAgent[GetBooks], valueAdded]]];*)
     newState,
     (* else no work done *)
     state
@@ -276,13 +280,15 @@ Pay[agents_, employeeId_] := Block[{employerIds, employerId, employeeIds, wage},
         agents[employerId][SetMoney[agents[employerId][GetMoney] - wage]];
         agents[employeeId][SetMoney[agents[employeeId][GetMoney] + wage]];
         (* Update books *)
-        agents[employerId][SetBooks[RecordWagePayment[agents[employerId][GetBooks], wage]]];
+        RecordWagePayment[agents[employerId][GetBooks], wage];
+        (* agents[employerId][SetBooks[RecordWagePayment[agents[employerId][GetBooks], wage]]]; *)
         (* else fire employee if run out of money (and don't pay them) *)
         Resign[agents, employeeId];
         (* If this is last employee, and firm dissolves, then close the books *)
         (* TODO: may want to scrap fixed-capital too at this point *)
         If[!IsEmployer[agents[employerId]],
-           agents[employerId][SetBooks[Books[]]];
+           Books[agents[employerId][GetBooks]];
+           (*agents[employerId][SetBooks[Books[]]];*)
         ];
       ];
     ];
@@ -391,13 +397,13 @@ Unemployed[history_List] := Length /@ Flatten[ResourceFunction["DynamicMap"][Une
 TotalMoneyHoldings[history_List] := Total /@ ResourceFunction["DynamicMap"][MoneyHoldings[IntendState[#]["agents"]]&, history]
 
 (* Returns list of total lifetime revenue of all firms that existed *)
-FirmRevenue[firmHistory_List] := GetRevenue /@ (IntendAgent[#][GetBooks]& /@ Last /@ firmHistory)
+FirmRevenue[firmHistory_List] := IntendAgent[#][GetBooks][GetRevenue] & /@ Last /@ firmHistory
 
 (* Returns list of total lifetime depreciation of all firms that existed *)
-FirmDepreciation[firmHistory_List] := GetDepreciation /@ (IntendAgent[#][GetBooks]& /@ Last /@ firmHistory)
+FirmDepreciation[firmHistory_List] := IntendAgent[#][GetBooks][GetDepreciation] & /@ Last /@ firmHistory
 
 (* Returns list of total lifetime wage bill of all firms that existed *)
-FirmWageBill[firmHistory_List] := GetWages /@ (IntendAgent[#][GetBooks]& /@ Last /@ firmHistory)
+FirmWageBill[firmHistory_List] := IntendAgent[#][GetBooks][GetWages] & /@ Last /@ firmHistory
 
 FirmProfit[firmHistory_List] := Module[
    {
