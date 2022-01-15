@@ -2,7 +2,7 @@
 
 BeginPackage["sac`"]
 
-Simulate::usage = "Generate history of states by simulating numAgents for numIterations with probability p of including each state in the history.";
+Simulate::usage = "Generate history of states by simulating numAgents for numIterations.";
 
 FirmHistories::usage = "Extract firm histories from history.";
 
@@ -153,9 +153,9 @@ ChooseAgent[agents_] := RandomChoice[Keys[agents]]
 ChooseAgentWeighted[agents_, weights_] := RandomChoice[weights -> Keys[agents]]
 
 ChooseAgentWeightedByMoney[agents_] := ChooseAgentWeighted[agents, #[GetMoney]& /@ Values[agents]]
-ChooseAgentWeightedByPoverty[agents_] := Block[{wealth = #[GetWealth]& /@ Values[agents], maxWealth}, 
-	maxWealth = Max[wealth]; 
-	ChooseAgentWeighted[agents, Map[1 + maxWealth - #&, wealth]]
+ChooseAgentWeightedByPoverty[agents_] := Block[{money = #[GetMoney]& /@ Values[agents], maxMoney}, 
+	maxMoney = Max[money]; 
+	ChooseAgentWeighted[agents, Map[1 + maxMoney - #&, money]]
 ]
 
 RandomExponentialReal[m_] := If[m <= 0, m, RandomVariate[TruncatedDistribution[{0, m}, ExponentialDistribution[1 / 2]]]]
@@ -212,11 +212,10 @@ Hire[agents_, hiringAgentId_, hireeAgentId_] := Block[{employer, employees},
   agents
 ]
 
-(* TODO: more employers means less chance to hire ... which may be wrong. *)
 Hire[agents_] := Block[{hiringAgentId, hireeAgentId},
 	hiringAgentId = ChooseAgentWeightedByMoney[agents];
 	hireeAgentId = ChooseAgentWeightedByPoverty[agents];
-	(* Both employed and unemployed can get hired. *)
+	(* Empoloyee cannot hire. Employer cannot be hired. *)
 	If[hiringAgentId != hireeAgentId && !IsEmployee[agents[hiringAgentId]] && !IsEmployer[agents[hireeAgentId]],
 		Hire[agents, hiringAgentId, hireeAgentId], 
 		agents
@@ -268,7 +267,7 @@ Pay[agents_, employeeId_] := Block[{employerIds, employerId, employeeIds, wage},
         agents[employerId][SetMoney[agents[employerId][GetMoney] - wage]];
         agents[employeeId][SetMoney[agents[employeeId][GetMoney] + wage]];
         (* Update books *)
-        RecordWagePayment[agents[employerId][GetBooks], wage];
+        RecordWagePayment[agents[employerId][GetBooks], wage];,
         (* else fire employee if run out of money (and don't pay them) *)
         Resign[agents, employeeId];
         (* If this is last employee, and firm dissolves, then close the books *)
@@ -286,7 +285,7 @@ Pay[agents_] := Pay[agents, ChooseAgent[agents]]
 
 ExtendState[intendedState_] := MapAt[Map[ExtendAgent[#] &, #] &, intendedState, Key["agents"]]
 
-Simulate[numAgents_, numIterations_, p_] := Module[{state = InitState[numAgents, 1], i = numIterations, rules},
+Simulate[numAgents_, numIterations_] := Module[{state = InitState[numAgents, 1], i = numIterations, rules},
   rules = {
     Hold[state = Work[state]],(* random agent *)
     Hold[state["agents"] = Pay[state["agents"]]],(* random agent *)
@@ -298,7 +297,7 @@ Simulate[numAgents_, numIterations_, p_] := Module[{state = InitState[numAgents,
      Monitor[Do[
            i--;
            ReleaseHold /@ RandomSample[rules];
-           If[RandomReal[] <= p, Sow[ExtendState[state]]],
+           Sow[ExtendState[state]],
            numIterations
      ], i]
   ]]]
