@@ -169,6 +169,7 @@ Spend[state_, agent_] := Block[{newState = state, m, s},
 
 Spend[state_] := Spend[state, ChooseAgent[state["agents"]]]
 
+(* Self-employed cannot invest *)
 Invest[state_, agent_] := Block[{newState = state, m, s},
   If[IsEmployer[agent],
     m = agent[GetMoney];
@@ -188,11 +189,17 @@ DeleteFromList[list_, value_] := Block[{position = FirstPosition[list, value]},
 	If[MissingQ[position], list, Drop[list, position]]
 ]
 
-Resign[agent_] := Block[{}, 
+Resign[agent_] := Block[{employer}, 
 	If[IsEmployee[agent],
 	    employer = agent[GetEmployer];
 		employer[SetEmployees[DeleteFromList[employer[GetEmployees], agent]]];
 		agent[SetEmployer[None]];
+		If[!IsEmployer[employer],
+           (* Firm dissolved. Close the books. *)
+           Books[employer[GetBooks]];
+           (* Scrap fixed-capital *)
+           employer[SetFixedCapital[0.0]];
+        ];
 	]; 
 ]
 
@@ -214,34 +221,29 @@ Hire[agents_] := Block[{hiringAgent, hireeAgent},
 	];
 ]
 
-FixedCapitalTransfer[agent_] := Block[{employerId, fixedCapitalTransfer = 0.0, numFirmEmployees, depreciationRate = 0.02},
-	If[IsEmployee[agent],
-		employer = agent[GetEmployer];
-		(* Each employee transfers a proportion of the firm's fixed capital *)
-		fixedCapitalTransfer = depreciationRate * employer[GetFixedCapital] / Length[employer[GetEmployees]];
-		employer[SetFixedCapital[employer[GetFixedCapital] - fixedCapitalTransfer]];
-	]; 
+(* Fixed capital can transfer even for self-employed *)
+FixedCapitalTransfer[agent_] := Block[{employer, fixedCapitalTransfer = 0.0, numFirmEmployees, depreciationRate = 0.01},
+    employer = If[IsEmployee[agent], agent[GetEmployer], agent];
+	(* Each employee transfers a proportion of the firm's fixed capital *)
+	fixedCapitalTransfer = depreciationRate * employer[GetFixedCapital] / (Length[employer[GetEmployees]] + 1);
+	employer[SetFixedCapital[employer[GetFixedCapital] - fixedCapitalTransfer]];
 	fixedCapitalTransfer
 ]
 
-Work[state_, agent_] := Block[{newState, valueAdded, employerAgent, fixedCapitalTransfer = 0.0},
-  If[!IsUnemployed[agent],
-    newState = state;
+(* Self-employed can work *)
+Work[state_, agent_] := Block[{newState = state, valueAdded, employer, fixedCapitalTransfer = 0.0},
     fixedCapitalTransfer = FixedCapitalTransfer[agent];
     (* Transfer value of fixed capital and sample some value-add from effective demand *)
     valueAdded = Min[newState["demand"], fixedCapitalTransfer + RandomReal[newState["demand"]]];
     newState["demand"] = newState["demand"] - valueAdded;
     (* Transfer to employer *)
-    employerAgent = If[IsEmployee[agent], agent[GetEmployer], agent];
-    employerAgent[SetMoney[employerAgent[GetMoney] + valueAdded]];
+    employer = If[IsEmployee[agent], agent[GetEmployer], agent];
+    employer[SetMoney[employer[GetMoney] + valueAdded]];
     (* Record the depreciation *)
-    RecordDepreciation[BooksName[employerAgent], fixedCapitalTransfer];
+    RecordDepreciation[BooksName[employer], fixedCapitalTransfer];
     (* Record the revenue *)
-    RecordRevenue[BooksName[employerAgent], valueAdded];
-    newState,
-    (* else no work done *)
-    state
-  ]
+    RecordRevenue[BooksName[employer], valueAdded];
+    newState
 ]
 
 Work[state_] := Work[state, ChooseAgent[state["agents"]]]
@@ -251,7 +253,7 @@ Pay[employee_] := Block[{employer, wage},
     employer = employee[GetEmployer];
     If[!(employer === employee),
       (* Wage is crucial parameter. Too low and 1 firm dominates. Too high and no large firms form. Also controls unemployment rate *)
-      wage = RandomReal[1.0];
+      wage = RandomReal[0.7];
       If[employer[GetMoney] >= wage,
         employer[SetMoney[employer[GetMoney] - wage]];
         employee[SetMoney[employee[GetMoney] + wage]];
@@ -259,11 +261,6 @@ Pay[employee_] := Block[{employer, wage},
         RecordWagePayment[employer[GetBooks], wage];,
         (* else fire employee if run out of money (and don't pay them) *)
         Resign[employee];
-        (* If this is last employee, and firm dissolves, then close the books *)
-        (* TODO: may want to scrap fixed-capital too at this point *)
-        If[!IsEmployer[employer],
-           Books[employer[GetBooks]];
-        ];
       ];
     ];
   ];
@@ -277,7 +274,7 @@ Simulate[numAgents_, numIterations_] := Module[{state = InitState[numAgents, 1],
   rules = {
     Hold[state = Work[state]],(* random agent *)
     Hold[Pay[state["agents"]]],(* random agent *)
-    Hold[state = Invest[state]],(* random agent *)
+    Hold[state = Invest[state]], (* random agent *)
     Hold[state = Spend[state]],(* random agent *)
     Hold[Hire[state["agents"]]](* weighted by money: vital for large firm formation *)
   };
@@ -333,7 +330,6 @@ UnemployedWealth[state_] := WealthHoldings[Unemployed[state]]
 FirmSizes[state_] := Length /@ GetEmployees /@ Employers[state]
 
 (* Returns a list of firm histories, where a firm history is a time-ordered list of states of the agent when they were an employer *)
-(* N.B. if p!=1 then multiple firm lifetimes can be collapsed to 1 firm lifetime. In which case, Books may be reset during apparent lifetime of the firm. *)
 FirmHistories[history_List] := Module[{firmHistories},
    PrintTemporary["Construct histories"];
    (* Construct a list of associations of firms in each simulation step *)
@@ -348,6 +344,18 @@ FirmHistories[history_List] := Module[{firmHistories},
    firmHistories = ResourceFunction["DynamicMap"][Map[If[Length[DeleteCases[#, {}]] == 0, Nothing, #] &, #]&, firmHistories];
    Flatten[Values[firmHistories], 1]
 ]
+
+(*
+FirmHistories[history_List] := Module[{firmHistories, numAgents = Length[First[history]["agents"]]},
+   firmHistories = ResourceFunction["DynamicMap"][With[{agentId = #}, Flatten[Map[With[{agent = #["agents"][agentId]}, If[IsEmployee[agent], agent, {}]], history], 1]] &, Range[numAgents]];
+   PrintTemporary["Split histories"];
+   firmHistories = ResourceFunction["DynamicMap"][SplitBy[#, Length[#] == 0 &] &, firmHistories];
+   PrintTemporary["Remove non-firm data"];
+   (* Delete sequences when the agent was not an employer, leaving a sequence of firm lifetimes (consisting of a sequence of agent states) for each agent *)
+   firmHistories = ResourceFunction["DynamicMap"][Map[If[Length[DeleteCases[#, {}]] == 0, Nothing, #] &, #]&, firmHistories];
+   Flatten[Values[firmHistories], 1]
+]
+*)
 
 (* Returns a list of the wealth of all employers at all times *)
 EmployersWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployersWealth[#]&, history]]
