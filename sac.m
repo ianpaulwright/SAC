@@ -164,23 +164,19 @@ Spend[state_, agent_] := Block[{newState = state, m, s},
   s = RandomReal[m];
   newState["demand"] = newState["demand"] + s;
   agent[SetMoney[m - s]];
-  newState
+  {newState, s}
 ]
 
-Spend[state_] := Spend[state, ChooseAgent[state["agents"]]]
+Spend[state_] := First[Spend[state, ChooseAgent[state["agents"]]]]
 
 (* Self-employed cannot invest *)
-Invest[state_, agent_] := Block[{newState = state, m, s},
+Invest[state_, agent_] := Block[{s, newState},
   If[IsEmployer[agent],
-    m = agent[GetMoney];
-    (* Higher probability of investing a small amount of money *)
-    (* s = RandomExponentialReal[m]; *)
-    s = RandomReal[m];
+    {newState, s} = Spend[state, agent];
     agent[SetFixedCapital[agent[GetFixedCapital] + s]];
-    agent[SetMoney[m - s]];
-    newState["demand"] = newState["demand"] + s;
-  ];
-  newState
+    newState,
+    state
+  ]
 ]
 
 Invest[state_] := Invest[state, ChooseAgent[state["agents"]]]
