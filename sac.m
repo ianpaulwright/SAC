@@ -56,10 +56,12 @@ Work::usage = "";
 Pay::usage = "";
 Employees::usage = "";
 Employers::usage = "";
+Workers::usage = "";
 MoneyHoldings::usage = "";
 WealthHoldings::usage = "";
 FixedCapital::usage = "";
 EmployersMoney::usage = "";
+WorkersMoney::usage = "";
 UnemployedMoney::usage = "";
 EmployeesWealth::usage = "";
 UnemployedWealth::usage = "";
@@ -301,13 +303,16 @@ Simulate[numAgents_, numIterations_] := Module[{state = InitState[numAgents, 1],
 
 (* Data analysis *)
 
-(* Returns association of employees *)
+(* Returns employees *)
 Employees[state_] := Select[Values[state["agents"]], IsEmployee]
 
-(* Returns association of employers *)
+(* Returns non-employers *)
+Workers[state_] := Select[Values[state["agents"]], !IsEmployer[#]&]
+
+(* Returns employers *)
 Employers[state_] := Select[Values[state["agents"]], IsEmployer]
 
-(* Returns association of unemployed *)
+(* Returns unemployed *)
 Unemployed[state_] := Select[Values[state["agents"]], IsUnemployed]
 
 (* Returns money holdings for every agent *)
@@ -321,6 +326,9 @@ FixedCapital[agents_] := GetFixedCapital /@ agents
 
 (* Returns money holdings for every employee *)
 EmployeesMoney[state_] := MoneyHoldings[Employees[state]]
+
+(* Returns money holdings for every non-employer *)
+WorkersMoney[state_] := MoneyHoldings[Workers[state]]
 
 (* Returns money holdings for every employer *)
 EmployersMoney[state_] := MoneyHoldings[Employers[state]]
@@ -367,6 +375,9 @@ UnemployedWealth[history_List] := Flatten[ResourceFunction["DynamicMap"][Unemplo
 
 (* Returns a list of the money holdings of all employees at all times *)
 EmployeesMoney[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployeesMoney[#]&, history]]
+
+(* Returns a list of the money holdings of all non-employers at all times *)
+WorkersMoney[history_List] := Flatten[ResourceFunction["DynamicMap"][WorkersMoney[#]&, history]]
 
 (* Returns a list of the firm sizes of all firms at all times *)
 FirmSizes[history_List] := Flatten[ResourceFunction["DynamicMap"][FirmSizes[#]&, history]]
