@@ -245,27 +245,12 @@ Work[state_, agent_] := Block[{newState, valueAdded, employer, fixedCapitalTrans
 
 Work[state_] := Work[state, ChooseAgent[state["agents"]]]
 
-Pay[employee_] := Block[{employer, wage},
-  If[IsEmployee[employee],
-    employer = employee[GetEmployer];
-    If[!(employer === employee),
-      (* Wage is crucial parameter. Too low and 1 firm dominates. Too high and no large firms form. Also controls unemployment rate *)
-      wage = RandomReal[{0.1, 0.9}];
-      If[employer[GetMoney] >= wage,
-        employer[SetMoney[employer[GetMoney] - wage]];
-        employee[SetMoney[employee[GetMoney] + wage]];
-        (* Update books *)
-        RecordWagePayment[employer[GetBooks], wage];,
-        (* else fire employee if run out of money (and don't pay them) *)
-        Resign[employee];
-      ];
-    ];
-  ];
-]
-
+(*
+TODO: remove me when "smoother" Pay function is satisfactory.
 Pay[agent_] := Block[{},
   If[IsEmployer[agent],
-     Scan[Block[{employee = #, wage = RandomReal[1.0]},
+     Scan[Block[{employee = #, wage},
+        wage = RandomReal[1.0];
         If[agent[GetMoney] >= wage,
            agent[SetMoney[agent[GetMoney] - wage]];
            employee[SetMoney[employee[GetMoney] + wage]];
@@ -276,6 +261,26 @@ Pay[agent_] := Block[{},
         ]] &, 
         agent[GetEmployees]
      ];
+  ];
+]
+*)
+
+Pay[employee_] := Block[{employer, wage},
+  If[IsEmployee[employee],
+    employer = employee[GetEmployer];
+    If[!(employer === employee),
+      (* Wage is crucial parameter. Too low and 1 firm dominates. Too high and no large firms form. Also controls unemployment rate *)
+      (* wage = RandomReal[1.25]; *)
+      wage = RandomReal[{0.1, 1.4}];
+      If[employer[GetMoney] >= wage,
+        employer[SetMoney[employer[GetMoney] - wage]];
+        employee[SetMoney[employee[GetMoney] + wage]];
+        (* Update books *)
+        RecordWagePayment[employer[GetBooks], wage];,
+        (* else fire employee if run out of money (and don't pay them) *)
+        Resign[employee];
+      ];
+    ];
   ];
 ]
 
