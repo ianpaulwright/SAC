@@ -155,12 +155,8 @@ ChooseAgentWeightedByPoverty[agents_] := Block[{money = #[GetMoney]& /@ agents, 
 	ChooseAgentWeighted[agents, Map[1 + maxMoney - #&, money]]
 ]
 
-RandomExponentialReal[m_] := If[m <= 0, m, RandomVariate[TruncatedDistribution[{0, m}, ExponentialDistribution[1 / 2]]]]
-
 Spend[state_, agent_] := Block[{newState = state, m, s},
   m = agent[GetMoney];
-  (* Higher probability of spending a small amount of money *)
-  (* s = RandomExponentialReal[m]; *)
   s = RandomReal[m];
   newState["demand"] = newState["demand"] + s;
   agent[SetMoney[m - s]];
