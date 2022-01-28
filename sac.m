@@ -242,7 +242,7 @@ Pay[employee_] := Block[{employer, wage},
     If[!(employer === employee),
       (* Wage is crucial parameter. Too low and 1 firm dominates. Too high and no large firms form. Also controls unemployment rate *)
       (* Perhaps make average just a little higher. *)
-      wage = RandomReal[{0.45, 0.55}];
+      wage = RandomReal[{0.5, 0.6}];
       If[employer[GetMoney] >= wage,
         employer[SetMoney[employer[GetMoney] - wage]];
         employee[SetMoney[employee[GetMoney] + wage]];
