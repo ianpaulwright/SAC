@@ -12,6 +12,8 @@ Unemployed::usage = "Get unemployed in state, or over history of states.";
 
 FirmSizes::usage = "Get firm sizes in state, or over history of states.";
 
+AverageFirmSizes::usage = "Get average firm size in state, or over history of states.";
+
 EmployeesMoney::usage = "Get workers money holdings in state, or over history of states.";
 
 EmployersWealth::usage = "Get capitalists wealth in state, or over history of states.";
@@ -44,7 +46,6 @@ ChooseAgent::usage = "";
 ChooseAgentWeighted::usage = "";
 GetWealth::usage = "";
 ChooseAgentWeightedByMoney::usage = "";
-ChooseAgentWeightedByPoverty::usage = "";
 RandomExponentialReal::usage = "";
 Spend::usage = "";
 Invest::usage = "";
@@ -150,12 +151,7 @@ GetUnemployed[agents_] := Select[agents, IsUnemployed]
 
 ChooseAgent[agents_] := RandomChoice[agents]
 ChooseAgentWeighted[agents_, weights_] := RandomChoice[weights -> agents]
-
 ChooseAgentWeightedByMoney[agents_] := ChooseAgentWeighted[agents, #[GetMoney]& /@ agents]
-ChooseAgentWeightedByPoverty[agents_] := Block[{money = #[GetMoney]& /@ agents, maxMoney}, 
-	maxMoney = Max[money]; 
-	ChooseAgentWeighted[agents, Map[1 + maxMoney - #&, money]]
-]
 
 Spend[state_, agent_] := Block[{newState = state, m, s},
   m = agent[GetMoney];
@@ -167,9 +163,8 @@ Spend[state_, agent_] := Block[{newState = state, m, s},
 
 Spend[state_] := First[Spend[state, ChooseAgent[state["agents"]]]]
 
-(* Self-employed cannot invest *)
 Invest[state_, agent_] := Block[{s, newState},
-  If[IsEmployer[agent],
+  If[!IsEmployee[agent],
     {newState, s} = Spend[state, agent];
     agent[SetFixedCapital[agent[GetFixedCapital] + s]];
     newState,
@@ -191,8 +186,7 @@ Resign[agent_] := Block[{employer},
 		If[!IsEmployer[employer],
            (* Firm dissolved. Close the books. *)
            Books[employer[GetBooks]];
-           (* Scrap fixed-capital *)
-           employer[SetFixedCapital[0.0]];
+           (* May want to scrap fixed-capital, although doing so may overly penalize firm demise events leading to over-monopolisation *)
         ];
 	]; 
 ]
@@ -208,14 +202,14 @@ Hire[hiringAgent_, hireeAgent_] := Block[{},
 
 Hire[agents_] := Block[{hiringAgent, hireeAgent},
 	hiringAgent = ChooseAgentWeightedByMoney[agents];
-	hireeAgent = ChooseAgentWeightedByPoverty[agents];
+	hireeAgent = ChooseAgent[agents];
 	(* Employee cannot hire. Employer cannot be hired. Employed cannot be hired. *)
 	If[!(hiringAgent === hireeAgent) && !IsEmployee[hiringAgent] && IsUnemployed[hireeAgent],
 		Hire[hiringAgent, hireeAgent] 
 	];
 ]
 
-(* Fixed capital can transfer even for self-employed *)
+(* Fixed capital can transfer (even for self-employed) *)
 FixedCapitalTransfer[agent_] := Block[{employer, fixedCapitalTransfer = 0.0, numFirmEmployees, depreciationRate = 0.05},
     employer = If[IsEmployee[agent], agent[GetEmployer], agent];
 	(* Each employee transfers a proportion of the firm's fixed capital *)
@@ -225,22 +219,19 @@ FixedCapitalTransfer[agent_] := Block[{employer, fixedCapitalTransfer = 0.0, num
 ]
 
 Work[state_, agent_] := Block[{newState, valueAdded, employer, fixedCapitalTransfer = 0.0},
-    If[!IsUnemployed[agent],
-       newState = state;
-       fixedCapitalTransfer = FixedCapitalTransfer[agent];
-       (* Transfer value of fixed capital and sample some value-add from effective demand *)
-       valueAdded = Min[newState["demand"], fixedCapitalTransfer + RandomReal[newState["demand"]]];
-       newState["demand"] = newState["demand"] - valueAdded;
-       (* Transfer to employer *)
-       employer = If[IsEmployee[agent], agent[GetEmployer], agent];
-       employer[SetMoney[employer[GetMoney] + valueAdded]];
-       (* Record the depreciation *)
-       RecordDepreciation[BooksName[employer], fixedCapitalTransfer];
-       (* Record the revenue *)
-       RecordRevenue[BooksName[employer], valueAdded];
-       newState,
-       state
-    ]
+    newState = state;
+    fixedCapitalTransfer = FixedCapitalTransfer[agent];
+    (* Transfer value of fixed capital and sample some value-add from effective demand *)
+    valueAdded = Min[newState["demand"], fixedCapitalTransfer + RandomReal[newState["demand"]]];
+    newState["demand"] = newState["demand"] - valueAdded;
+    (* Transfer to employer *)
+    employer = If[IsEmployee[agent], agent[GetEmployer], agent];
+    employer[SetMoney[employer[GetMoney] + valueAdded]];
+    (* Record the depreciation *)
+    RecordDepreciation[BooksName[employer], fixedCapitalTransfer];
+    (* Record the revenue *)
+    RecordRevenue[BooksName[employer], valueAdded];
+    newState
 ]
 
 Work[state_] := Work[state, ChooseAgent[state["agents"]]]
@@ -250,7 +241,8 @@ Pay[employee_] := Block[{employer, wage},
     employer = employee[GetEmployer];
     If[!(employer === employee),
       (* Wage is crucial parameter. Too low and 1 firm dominates. Too high and no large firms form. Also controls unemployment rate *)
-      wage = RandomReal[{0.4, 0.8}];
+      (* Perhaps make average just a little higher. *)
+      wage = RandomReal[{0.5, 0.6}];
       If[employer[GetMoney] >= wage,
         employer[SetMoney[employer[GetMoney] - wage]];
         employee[SetMoney[employee[GetMoney] + wage]];
@@ -331,6 +323,10 @@ UnemployedWealth[state_] := WealthHoldings[Unemployed[state]]
 
 (* Returns list of firm sizes *)
 FirmSizes[state_] := Length /@ GetEmployees /@ Employers[state]
+FirmSizes[state_] := (Length[#] + 1) & /@ GetEmployees /@ Values[state["agents"]]
+
+(* Returns average firm size *)
+AverageFirmSize[state_] := Mean[FirmSizes[state]]
 
 (* Returns a list of firm histories, where a firm history is a time-ordered list of states of the agent when they were an employer *)
 FirmHistories[history_List] := Module[{firmHistories},
@@ -363,8 +359,14 @@ EmployeesMoney[history_List] := Flatten[ResourceFunction["DynamicMap"][Employees
 (* Returns a list of the money holdings of all non-employers at all times *)
 WorkersMoney[history_List] := Flatten[ResourceFunction["DynamicMap"][WorkersMoney[#]&, history]]
 
+(* Returns a list of the money holdings of all employers at all times *)
+EmployersMoney[history_List] := Flatten[ResourceFunction["DynamicMap"][EmployersMoney[#]&, history]]
+
 (* Returns a list of the firm sizes of all firms at all times *)
 FirmSizes[history_List] := Flatten[ResourceFunction["DynamicMap"][FirmSizes[#]&, history]]
+
+(* Returns time-ordered list of average firm size *)
+AverageFirmSizes[history_List] := Flatten[ResourceFunction["DynamicMap"][AverageFirmSize[#]&, history]]
 
 (* Returns a list of number of unemployed at all times *)
 Unemployed[history_List] := Flatten[ResourceFunction["DynamicMap"][Length[Unemployed[#]]&, history]]
